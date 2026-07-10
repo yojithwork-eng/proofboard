@@ -27,6 +27,10 @@ class ProofCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final accent = skillColor(skill);
+    final timeRange = ProofDateUtils.formatTimeRange(
+      proof.startTime,
+      proof.endTime,
+    );
 
     return Container(
       decoration: BoxDecoration(
@@ -133,12 +137,21 @@ class ProofCard extends StatelessWidget {
                         _MetaPill(
                           icon: Icons.calendar_today_outlined,
                           label: ProofDateUtils.friendlyDate(
-                            proof.createdAt,
+                            proof.date,
                           ),
                         ),
+                        if (timeRange.isNotEmpty)
+                          _MetaPill(
+                            icon: Icons.schedule,
+                            label: timeRange,
+                          ),
                         _MetaPill(
                           icon: Icons.timer_outlined,
                           label: '${proof.minutes} min focused',
+                        ),
+                        _MetaPill(
+                          icon: Icons.bolt,
+                          label: '+${proof.totalSp} SP',
                         ),
                       ],
                     ),

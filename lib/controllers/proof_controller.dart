@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import '../models/proof.dart';
 import '../models/skill.dart';
 import '../services/proof_storage_service.dart';
+import '../utils/date_utils.dart';
+import '../utils/skill_points_utils.dart';
 import '../utils/stats_utils.dart';
 
 class ProofController extends ChangeNotifier {
@@ -15,7 +17,21 @@ class ProofController extends ChangeNotifier {
 
   List<Proof> get proofs {
     final sorted = List<Proof>.from(_proofs);
-    sorted.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    sorted.sort((a, b) {
+      final dateComparison = b.date.compareTo(a.date);
+      if (dateComparison != 0) {
+        return dateComparison;
+      }
+
+      final aTime = ProofDateUtils.minutesFromTimeString(a.startTime) ?? 1440;
+      final bTime = ProofDateUtils.minutesFromTimeString(b.startTime) ?? 1440;
+      final timeComparison = bTime.compareTo(aTime);
+      if (timeComparison != 0) {
+        return timeComparison;
+      }
+
+      return b.createdAt.compareTo(a.createdAt);
+    });
     return sorted;
   }
 
@@ -25,6 +41,14 @@ class ProofController extends ChangeNotifier {
 
   int get totalMinutes => StatsUtils.totalMinutes(_proofs);
 
+  int get totalSp => SkillPointsUtils.totalSp(_proofs);
+
+  int get spToday => SkillPointsUtils.spToday(_proofs);
+
+  int get spThisWeek => SkillPointsUtils.spThisWeek(_proofs);
+
+  int get spThisMonth => SkillPointsUtils.spThisMonth(_proofs);
+
   int get activeSkills => StatsUtils.activeSkillCount(_proofs);
 
   int get currentStreak => StatsUtils.currentStreak(_proofs);
@@ -33,6 +57,8 @@ class ProofController extends ChangeNotifier {
       StatsUtils.bestSkillName(_proofs, skills);
 
   Map<String, int> get skillCounts => StatsUtils.skillCounts(_proofs);
+
+  Map<String, int> get spBySkill => SkillPointsUtils.spBySkill(_proofs);
 
   Future<void> loadProofs() async {
     _isLoading = true;
@@ -58,10 +84,19 @@ class ProofController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<void> deleteProof(String id) async {
+  Future<Proof?> deleteProof(String id) async {
+    Proof? deletedProof;
+    for (final proof in _proofs) {
+      if (proof.id == id) {
+        deletedProof = proof;
+        break;
+      }
+    }
+
     _proofs = _proofs.where((proof) => proof.id != id).toList();
     await _storageService.saveProofs(_proofs);
     notifyListeners();
+    return deletedProof;
   }
 
   Future<void> clearProofs() async {

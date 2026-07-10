@@ -3,11 +3,13 @@ import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
 import '../constants/mode_styles.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/app_mode.dart';
 import '../models/skill.dart';
+import '../utils/skill_points_utils.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/recap_sheet.dart';
 import '../widgets/stat_card.dart';
@@ -36,8 +38,16 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer3<ProofController, SkillController, SettingsController>(
-      builder: (context, controller, skillController, settings, child) {
+    return Consumer4<ProofController, SkillController, SettingsController,
+        PlannedSessionController>(
+      builder: (
+        context,
+        controller,
+        skillController,
+        settings,
+        plannedController,
+        child,
+      ) {
         final skills = skillController.skills;
         final counts = controller.skillCounts;
         final maxCount =
@@ -51,6 +61,7 @@ class StatsScreen extends StatelessWidget {
             _StatsHeader(
               totalProofs: controller.totalProofs,
               totalMinutes: controller.totalMinutes,
+              totalSp: controller.totalSp,
               bestSkill: controller.bestSkill(skills),
               mode: settings.appMode,
             ),
@@ -71,6 +82,19 @@ class StatsScreen extends StatelessWidget {
                       value: '${controller.currentStreak} days',
                       icon: Icons.local_fire_department_outlined,
                       highlighted: true,
+                    ),
+                    StatCard(
+                      label: 'Total SP',
+                      value: '${controller.totalSp}',
+                      icon: Icons.bolt,
+                      color: const Color(0xFFF59E0B),
+                      highlighted: true,
+                    ),
+                    StatCard(
+                      label: 'SP this week',
+                      value: '${controller.spThisWeek}',
+                      icon: Icons.calendar_view_week_outlined,
+                      color: const Color(0xFF2457FF),
                     ),
                     StatCard(
                       label: 'Total proofs',
@@ -112,6 +136,25 @@ class StatsScreen extends StatelessWidget {
                 controller.shareRecap(skills),
               ),
               onOpenExportCenter: () => _openExportCenter(context),
+            ),
+            const SizedBox(height: 18),
+            _SkillPointsPanel(
+              totalSp: controller.totalSp,
+              weekSp: controller.spThisWeek,
+              monthSp: controller.spThisMonth,
+              bestSkillBySp: SkillPointsUtils.bestSkillBySp(
+                controller.proofs,
+                skills,
+              ),
+              completedPlans: SkillPointsUtils.completedPlannedCount(
+                plannedController.sessions,
+              ),
+              missedPlans: SkillPointsUtils.missedPlannedCount(
+                plannedController.sessions,
+              ),
+              completionRate: SkillPointsUtils.completionRate(
+                plannedController.sessions,
+              ),
             ),
             const SizedBox(height: 26),
             Text(
@@ -183,12 +226,14 @@ class _StatsHeader extends StatelessWidget {
   const _StatsHeader({
     required this.totalProofs,
     required this.totalMinutes,
+    required this.totalSp,
     required this.bestSkill,
     required this.mode,
   });
 
   final int totalProofs;
   final int totalMinutes;
+  final int totalSp;
   final String bestSkill;
   final AppMode mode;
 
@@ -226,7 +271,7 @@ class _StatsHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '$totalProofs proofs, $totalMinutes minutes, strongest skill: $bestSkill.',
+            '$totalProofs proofs, $totalMinutes minutes, $totalSp SP, strongest skill: $bestSkill.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.white.withValues(alpha: 0.76),
                   fontWeight: FontWeight.w700,
@@ -280,6 +325,207 @@ class _RecapActions extends StatelessWidget {
             onPressed: onOpenExportCenter,
             icon: const Icon(Icons.file_upload_outlined),
             label: const Text('Open Export Center'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SkillPointsPanel extends StatelessWidget {
+  const _SkillPointsPanel({
+    required this.totalSp,
+    required this.weekSp,
+    required this.monthSp,
+    required this.bestSkillBySp,
+    required this.completedPlans,
+    required this.missedPlans,
+    required this.completionRate,
+  });
+
+  final int totalSp;
+  final int weekSp;
+  final int monthSp;
+  final String bestSkillBySp;
+  final int completedPlans;
+  final int missedPlans;
+  final double completionRate;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final completionPercent = (completionRate * 100).round();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border:
+            Border.all(color: colorScheme.onSurface.withValues(alpha: 0.07)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha:
+                  Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.07,
+            ),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF59E0B).withValues(alpha: 0.13),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: const Icon(Icons.bolt, color: Color(0xFFF59E0B)),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Skill Points',
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: _SpTile(label: 'Total', value: '$totalSp SP'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SpTile(label: 'Week', value: '$weekSp SP'),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _SpTile(label: 'Month', value: '$monthSp SP'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          _SpInfoRow(label: 'Best skill by SP', value: bestSkillBySp),
+          _SpInfoRow(label: 'Plans completed', value: '$completedPlans'),
+          _SpInfoRow(label: 'Plans missed', value: '$missedPlans'),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(999),
+                  child: LinearProgressIndicator(
+                    value: completionRate.clamp(0, 1).toDouble(),
+                    minHeight: 9,
+                    color: colorScheme.primary,
+                    backgroundColor:
+                        colorScheme.primary.withValues(alpha: 0.12),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                '$completionPercent%',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: colorScheme.primary,
+                      fontWeight: FontWeight.w900,
+                    ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpTile extends StatelessWidget {
+  const _SpTile({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.58),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label.toUpperCase(),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.7,
+                ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SpInfoRow extends StatelessWidget {
+  const _SpInfoRow({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ),
+          Text(
+            value,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
           ),
         ],
       ),

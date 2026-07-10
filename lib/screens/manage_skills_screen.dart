@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/skill.dart';
@@ -18,11 +19,15 @@ class ManageSkillsScreen extends StatelessWidget {
 
   Future<void> _deleteSkill(BuildContext context, Skill skill) async {
     final proofController = context.read<ProofController>();
-    if (proofController.isSkillUsed(skill.id)) {
+    final plannedController = context.read<PlannedSessionController>();
+    final isUsedByPlan = plannedController.sessions.any(
+      (session) => session.skillId == skill.id,
+    );
+    if (proofController.isSkillUsed(skill.id) || isUsedByPlan) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${skill.name} is used by existing proofs and cannot be deleted.',
+            '${skill.name} is used by proofs or planned sessions and cannot be deleted.',
           ),
         ),
       );

@@ -4,15 +4,19 @@ import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
 import '../constants/mode_styles.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/app_mode.dart';
+import '../models/planned_session.dart';
+import '../models/proof.dart';
 import '../models/resource.dart';
 import '../models/skill.dart';
 import '../utils/date_utils.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/proof_card.dart';
+import 'plan_ahead_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({
@@ -26,9 +30,22 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer3<ProofController, SkillController, SettingsController>(
-      builder: (context, controller, skillController, settings, child) {
+    return Consumer4<ProofController, SkillController, SettingsController,
+        PlannedSessionController>(
+      builder: (
+        context,
+        controller,
+        skillController,
+        settings,
+        plannedController,
+        child,
+      ) {
         final appMode = settings.appMode;
+        final today = ProofDateUtils.dateOnly(DateTime.now());
+        final todayProofs = controller.proofs
+            .where((proof) => ProofDateUtils.isSameDay(proof.date, today))
+            .toList();
+        final todayPlans = plannedController.sessionsForDay(today);
         final counts = controller.skillCounts;
         final maxCount =
             counts.isEmpty ? 1 : counts.values.reduce((a, b) => a > b ? a : b);
@@ -48,6 +65,22 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             _MissionCard(mode: appMode, onAddProof: onAddProof),
+            const SizedBox(height: 18),
+            _TodayScheduleCard(
+              mode: appMode,
+              proofs: todayProofs,
+              plannedSessions: todayPlans,
+              skills: skillController.skills,
+              spToday: controller.spToday,
+              onLogProof: onAddProof,
+              onPlanAhead: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (context) => PlanAheadScreen(initialDate: today),
+                  ),
+                );
+              },
+            ),
             const SizedBox(height: 18),
             _SuggestedSkillsSection(
               mode: appMode,
@@ -398,6 +431,200 @@ class _MissionCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
             child: const Text('Add Proof'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TodayScheduleCard extends StatelessWidget {
+  const _TodayScheduleCard({
+    required this.mode,
+    required this.proofs,
+    required this.plannedSessions,
+    required this.skills,
+    required this.spToday,
+    required this.onLogProof,
+    required this.onPlanAhead,
+  });
+
+  final AppMode mode;
+  final List<Proof> proofs;
+  final List<PlannedSession> plannedSessions;
+  final List<Skill> skills;
+  final int spToday;
+  final VoidCallback onLogProof;
+  final VoidCallback onPlanAhead;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = modeAccentColor(mode);
+    final upcomingPlans = plannedSessions
+        .where((session) => session.completedProofId == null)
+        .take(3)
+        .toList();
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accent.withValues(alpha: 0.12)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(
+              alpha:
+                  Theme.of(context).brightness == Brightness.dark ? 0.18 : 0.07,
+            ),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Icon(Icons.calendar_today_outlined, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Today\'s skill schedule',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w900,
+                          ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${plannedSessions.length} planned • ${proofs.length} completed • $spToday SP',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (upcomingPlans.isNotEmpty) ...[
+            const SizedBox(height: 14),
+            ...upcomingPlans.map(
+              (session) => Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _MiniPlanRow(
+                  session: session,
+                  skill: _skillById(session.skillId),
+                ),
+              ),
+            ),
+          ] else ...[
+            const SizedBox(height: 12),
+            Text(
+              'No planned blocks yet. Give tomorrow-you a clean target.',
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  onPressed: onPlanAhead,
+                  icon: const Icon(Icons.event_available_outlined),
+                  label: const Text('Plan Ahead'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              IconButton.filledTonal(
+                tooltip: 'Log proof',
+                onPressed: onLogProof,
+                icon: const Icon(Icons.add_circle_outline),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Skill _skillById(String skillId) {
+    return skills.firstWhere(
+      (skill) => skill.id == skillId,
+      orElse: () => starterSkills.firstWhere(
+        (skill) => skill.id == skillId,
+        orElse: () => const Skill(
+          id: 'skill_other',
+          name: 'Other',
+          colorValue: defaultSkillColorValue,
+          iconName: 'auto_awesome',
+          mode: SkillMode.general,
+        ),
+      ),
+    );
+  }
+}
+
+class _MiniPlanRow extends StatelessWidget {
+  const _MiniPlanRow({
+    required this.session,
+    required this.skill,
+  });
+
+  final PlannedSession session;
+  final Skill skill;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = skillColor(skill);
+
+    return Container(
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          Icon(skillIcon(skill), color: color, size: 18),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              session.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w900,
+                  ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            ProofDateUtils.formatTimeRange(
+              session.plannedStartTime,
+              session.plannedEndTime,
+            ),
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w800,
+                ),
           ),
         ],
       ),

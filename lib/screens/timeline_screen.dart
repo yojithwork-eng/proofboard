@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/proof.dart';
@@ -43,7 +44,10 @@ class TimelineScreen extends StatelessWidget {
     );
 
     if (shouldDelete == true && context.mounted) {
-      await context.read<ProofController>().deleteProof(proof.id);
+      final proofController = context.read<ProofController>();
+      final plannedController = context.read<PlannedSessionController>();
+      await proofController.deleteProof(proof.id);
+      await plannedController.unlinkProof(proof.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Proof deleted')),

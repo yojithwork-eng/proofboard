@@ -3,12 +3,14 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:proofboard/controllers/proof_controller.dart';
+import 'package:proofboard/controllers/planned_session_controller.dart';
 import 'package:proofboard/controllers/settings_controller.dart';
 import 'package:proofboard/controllers/skill_controller.dart';
 import 'package:proofboard/main.dart';
 import 'package:proofboard/models/proof.dart';
 import 'package:proofboard/models/skill.dart';
 import 'package:proofboard/services/proof_storage_service.dart';
+import 'package:proofboard/services/planned_session_storage_service.dart';
 import 'package:proofboard/services/settings_storage_service.dart';
 import 'package:proofboard/services/skill_storage_service.dart';
 
@@ -16,6 +18,9 @@ void main() {
   testWidgets('ProofBoard app renders home screen', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final proofController = ProofController(ProofStorageService());
+    final plannedSessionController = PlannedSessionController(
+      PlannedSessionStorageService(),
+    );
     final settingsController = SettingsController(SettingsStorageService());
     final skillController = SkillController(SkillStorageService());
 
@@ -24,6 +29,7 @@ void main() {
         proofController: proofController,
         settingsController: settingsController,
         skillController: skillController,
+        plannedSessionController: plannedSessionController,
       ),
     );
 
@@ -36,6 +42,9 @@ void main() {
   testWidgets('Timeline renders a saved proof card', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final proofController = ProofController(ProofStorageService());
+    final plannedSessionController = PlannedSessionController(
+      PlannedSessionStorageService(),
+    );
     final settingsController = SettingsController(SettingsStorageService());
     final skillController = SkillController(SkillStorageService());
     await proofController.addProof(
@@ -54,6 +63,7 @@ void main() {
         proofController: proofController,
         settingsController: settingsController,
         skillController: skillController,
+        plannedSessionController: plannedSessionController,
       ),
     );
     await tester.tap(find.text('Timeline'));
@@ -68,6 +78,9 @@ void main() {
   testWidgets('Calendar renders saved proof activity', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final proofController = ProofController(ProofStorageService());
+    final plannedSessionController = PlannedSessionController(
+      PlannedSessionStorageService(),
+    );
     final settingsController = SettingsController(SettingsStorageService());
     final skillController = SkillController(SkillStorageService());
     await proofController.addProof(
@@ -86,6 +99,7 @@ void main() {
         proofController: proofController,
         settingsController: settingsController,
         skillController: skillController,
+        plannedSessionController: plannedSessionController,
       ),
     );
     await tester.tap(find.text('Calendar'));
@@ -104,6 +118,9 @@ void main() {
   testWidgets('Settings screen opens and shows theme options', (tester) async {
     SharedPreferences.setMockInitialValues({});
     final proofController = ProofController(ProofStorageService());
+    final plannedSessionController = PlannedSessionController(
+      PlannedSessionStorageService(),
+    );
     final settingsController = SettingsController(SettingsStorageService());
     final skillController = SkillController(SkillStorageService());
 
@@ -112,6 +129,7 @@ void main() {
         proofController: proofController,
         settingsController: settingsController,
         skillController: skillController,
+        plannedSessionController: plannedSessionController,
       ),
     );
     await tester.tap(find.byTooltip('Open settings'));

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'app_theme.dart';
+import 'controllers/planned_session_controller.dart';
 import 'controllers/proof_controller.dart';
 import 'controllers/settings_controller.dart';
 import 'controllers/skill_controller.dart';
@@ -12,6 +13,7 @@ import 'screens/home_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/stats_screen.dart';
 import 'screens/timeline_screen.dart';
+import 'services/planned_session_storage_service.dart';
 import 'services/proof_storage_service.dart';
 import 'services/settings_storage_service.dart';
 import 'services/skill_storage_service.dart';
@@ -29,11 +31,17 @@ Future<void> main() async {
   final skillController = SkillController(SkillStorageService());
   await skillController.loadSkills();
 
+  final plannedSessionController = PlannedSessionController(
+    PlannedSessionStorageService(),
+  );
+  await plannedSessionController.loadSessions();
+
   runApp(
     ProofBoardApp(
       proofController: proofController,
       settingsController: settingsController,
       skillController: skillController,
+      plannedSessionController: plannedSessionController,
     ),
   );
 }
@@ -44,11 +52,13 @@ class ProofBoardApp extends StatelessWidget {
     required this.proofController,
     required this.settingsController,
     required this.skillController,
+    required this.plannedSessionController,
   });
 
   final ProofController proofController;
   final SettingsController settingsController;
   final SkillController skillController;
+  final PlannedSessionController plannedSessionController;
 
   @override
   Widget build(BuildContext context) {
@@ -57,6 +67,7 @@ class ProofBoardApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: proofController),
         ChangeNotifierProvider.value(value: settingsController),
         ChangeNotifierProvider.value(value: skillController),
+        ChangeNotifierProvider.value(value: plannedSessionController),
       ],
       child: Consumer<SettingsController>(
         builder: (context, settings, child) {

@@ -3,16 +3,20 @@ import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
 import '../constants/mode_styles.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/app_mode.dart';
+import '../models/planned_session.dart';
 import '../models/proof.dart';
 import '../models/skill.dart';
 import '../utils/date_utils.dart';
-import '../widgets/empty_state.dart';
-import '../widgets/proof_card.dart';
+import '../utils/skill_points_utils.dart';
+import '../widgets/day_timeline.dart';
+import 'add_proof_screen.dart';
 import 'edit_proof_screen.dart';
+import 'plan_ahead_screen.dart';
 
 class CalendarScreen extends StatefulWidget {
   const CalendarScreen({super.key});
@@ -32,6 +36,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final today = DateTime.now();
     _visibleMonth = DateTime(today.year, today.month);
     _selectedDay = ProofDateUtils.dateOnly(today);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        context.read<PlannedSessionController>().refreshMissedSessions();
+      }
+    });
   }
 
   void _changeMonth(int offset) {
@@ -46,6 +55,35 @@ class _CalendarScreenState extends State<CalendarScreen> {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (context) => EditProofScreen(proof: proof),
+      ),
+    );
+  }
+
+  void _openPlanAhead(BuildContext context, {PlannedSession? session}) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => PlanAheadScreen(
+          initialDate: _selectedDay,
+          session: session,
+        ),
+      ),
+    );
+  }
+
+  void _openLogProofForPlan(BuildContext context, PlannedSession session) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => AddProofScreen(
+          standalone: true,
+          onSaved: () {},
+          initialSkillId: session.skillId,
+          initialTitle: session.title,
+          initialNote: session.note,
+          initialDate: session.date,
+          initialStartTime: session.plannedStartTime,
+          initialEndTime: session.plannedEndTime,
+          initialPlannedSessionId: session.id,
+        ),
       ),
     );
   }
@@ -74,7 +112,10 @@ class _CalendarScreenState extends State<CalendarScreen> {
     );
 
     if (shouldDelete == true && context.mounted) {
-      await context.read<ProofController>().deleteProof(proof.id);
+      final proofController = context.read<ProofController>();
+      final plannedController = context.read<PlannedSessionController>();
+      await proofController.deleteProof(proof.id);
+      await plannedController.unlinkProof(proof.id);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Proof deleted')),
@@ -83,10 +124,69 @@ class _CalendarScreenState extends State<CalendarScreen> {
     }
   }
 
+  Future<void> _confirmDeletePlan(
+    BuildContext context,
+    PlannedSession session,
+  ) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('Delete planned session?'),
+          content: Text(
+            'This will remove "${session.title}" from your schedule.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true && context.mounted) {
+      final deleted =
+          await context.read<PlannedSessionController>().deleteSession(
+                session.id,
+              );
+      if (deleted?.completedProofId != null && context.mounted) {
+        final proofController = context.read<ProofController>();
+        for (final proof in proofController.proofs) {
+          if (proof.id == deleted!.completedProofId) {
+            await proofController.updateProof(
+              proof.copyWith(plannedSessionId: null, bonusSp: 0),
+            );
+            break;
+          }
+        }
+      }
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Planned session deleted')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Consumer3<ProofController, SkillController, SettingsController>(
-      builder: (context, proofController, skillController, settings, child) {
+    return Consumer4<ProofController, SkillController, SettingsController,
+        PlannedSessionController>(
+      builder: (
+        context,
+        proofController,
+        skillController,
+        settings,
+        plannedController,
+        child,
+      ) {
         final appMode = settings.appMode;
         final filterAppMode = _currentModeOnly ? appMode : null;
         final selectedProofs = _proofsForDay(
@@ -95,6 +195,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
           skillController,
           mode: filterAppMode,
         );
+        final selectedPlannedSessions = _plannedSessionsForDay(
+          plannedController.sessions,
+          _selectedDay,
+          skillController,
+          mode: filterAppMode,
+        );
+        final selectedDaySp =
+            SkillPointsUtils.spForDay(selectedProofs, _selectedDay);
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
@@ -105,6 +213,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
               visibleMonth: _visibleMonth,
               selectedDay: _selectedDay,
               proofs: proofController.proofs,
+              plannedSessions: plannedController.sessions,
               skillController: skillController,
               mode: appMode,
               currentModeOnly: _currentModeOnly,
@@ -121,28 +230,25 @@ class _CalendarScreenState extends State<CalendarScreen> {
             _SelectedDayHeader(
               selectedDay: _selectedDay,
               proofCount: selectedProofs.length,
+              planCount: selectedPlannedSessions.length,
+              daySp: selectedDaySp,
+              onPlanAhead: () => _openPlanAhead(context),
             ),
             const SizedBox(height: 12),
-            if (selectedProofs.isEmpty)
-              const EmptyState(
-                icon: Icons.event_available_outlined,
-                title: 'No proofs on this day',
-                message:
-                    'Pick another highlighted day or add a proof to start filling your consistency map.',
-              )
-            else
-              ...selectedProofs.map(
-                (proof) => Padding(
-                  padding: const EdgeInsets.only(bottom: 14),
-                  child: ProofCard(
-                    proof: proof,
-                    skill: skillController.skillById(proof.skillId),
-                    onTap: () => _openEditScreen(context, proof),
-                    onEdit: () => _openEditScreen(context, proof),
-                    onDelete: () => _confirmDelete(context, proof),
-                  ),
-                ),
-              ),
+            DayTimeline(
+              day: _selectedDay,
+              proofs: selectedProofs,
+              plannedSessions: selectedPlannedSessions,
+              skills: skillController.skills,
+              onLogPlannedSession: (session) =>
+                  _openLogProofForPlan(context, session),
+              onEditPlannedSession: (session) =>
+                  _openPlanAhead(context, session: session),
+              onDeletePlannedSession: (session) =>
+                  _confirmDeletePlan(context, session),
+              onEditProof: (proof) => _openEditScreen(context, proof),
+              onDeleteProof: (proof) => _confirmDelete(context, proof),
+            ),
           ],
         );
       },
@@ -156,7 +262,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
     AppMode? mode,
   }) {
     return proofs.where((proof) {
-      final sameDay = ProofDateUtils.isSameDay(proof.createdAt, day);
+      final sameDay = ProofDateUtils.isSameDay(proof.date, day);
       if (!sameDay) {
         return false;
       }
@@ -166,6 +272,27 @@ class _CalendarScreenState extends State<CalendarScreen> {
       }
 
       return skillFitsAppMode(skillController.skillById(proof.skillId), mode);
+    }).toList();
+  }
+
+  List<PlannedSession> _plannedSessionsForDay(
+    List<PlannedSession> sessions,
+    DateTime day,
+    SkillController skillController, {
+    AppMode? mode,
+  }) {
+    return sessions.where((session) {
+      final sameDay = ProofDateUtils.isSameDay(session.date, day);
+      if (!sameDay) {
+        return false;
+      }
+
+      if (mode == null) {
+        return true;
+      }
+
+      return session.mode == mode ||
+          skillFitsAppMode(skillController.skillById(session.skillId), mode);
     }).toList();
   }
 }
@@ -233,6 +360,7 @@ class _MonthCard extends StatelessWidget {
     required this.visibleMonth,
     required this.selectedDay,
     required this.proofs,
+    required this.plannedSessions,
     required this.skillController,
     required this.mode,
     required this.currentModeOnly,
@@ -245,6 +373,7 @@ class _MonthCard extends StatelessWidget {
   final DateTime visibleMonth;
   final DateTime selectedDay;
   final List<Proof> proofs;
+  final List<PlannedSession> plannedSessions;
   final SkillController skillController;
   final AppMode mode;
   final bool currentModeOnly;
@@ -265,8 +394,15 @@ class _MonthCard extends StatelessWidget {
       skillController,
       mode: filterAppMode,
     );
+    final monthPlans = _plannedSessionsForVisibleMonth(
+      plannedSessions,
+      visibleMonth,
+      skillController,
+      mode: filterAppMode,
+    );
     final activeDays = monthProofs
-        .map((proof) => ProofDateUtils.dateOnly(proof.createdAt))
+        .map((proof) => ProofDateUtils.dateOnly(proof.date))
+        .followedBy(monthPlans.map((session) => session.date))
         .map((day) => day.millisecondsSinceEpoch)
         .toSet()
         .length;
@@ -347,8 +483,19 @@ class _MonthCard extends StatelessWidget {
                 skillController,
                 mode: filterAppMode,
               );
+              final dayPlans = _plannedSessionsForCalendarDay(
+                plannedSessions,
+                day,
+                skillController,
+                mode: filterAppMode,
+              );
               final skillsForDay = _skillsForProofs(
                 dayProofs,
+                skillController,
+                focusMode: mode,
+              );
+              final plannedSkillsForDay = _skillsForPlans(
+                dayPlans,
                 skillController,
                 focusMode: mode,
               );
@@ -359,6 +506,13 @@ class _MonthCard extends StatelessWidget {
                 isSelected: ProofDateUtils.isSameDay(day, selectedDay),
                 isToday: ProofDateUtils.isSameDay(day, DateTime.now()),
                 skills: skillsForDay,
+                plannedSkills: plannedSkillsForDay,
+                hasMissedPlan: dayPlans.any(
+                  (session) => session.status == PlannedSessionStatus.missed,
+                ),
+                hasCompletedPlan: dayPlans.any(
+                  (session) => session.status == PlannedSessionStatus.completed,
+                ),
                 focusMode: mode,
                 onTap: () => onSelectDay(day),
               );
@@ -387,7 +541,7 @@ class _MonthCard extends StatelessWidget {
     AppMode? mode,
   }) {
     return proofs.where((proof) {
-      final sameDay = ProofDateUtils.isSameDay(proof.createdAt, day);
+      final sameDay = ProofDateUtils.isSameDay(proof.date, day);
       if (!sameDay) {
         return false;
       }
@@ -400,6 +554,27 @@ class _MonthCard extends StatelessWidget {
     }).toList();
   }
 
+  List<PlannedSession> _plannedSessionsForCalendarDay(
+    List<PlannedSession> sessions,
+    DateTime day,
+    SkillController skillController, {
+    AppMode? mode,
+  }) {
+    return sessions.where((session) {
+      final sameDay = ProofDateUtils.isSameDay(session.date, day);
+      if (!sameDay) {
+        return false;
+      }
+
+      if (mode == null) {
+        return true;
+      }
+
+      return session.mode == mode ||
+          skillFitsAppMode(skillController.skillById(session.skillId), mode);
+    }).toList();
+  }
+
   List<Proof> _proofsForVisibleMonth(
     List<Proof> proofs,
     DateTime month,
@@ -407,8 +582,8 @@ class _MonthCard extends StatelessWidget {
     AppMode? mode,
   }) {
     return proofs.where((proof) {
-      final sameMonth = proof.createdAt.year == month.year &&
-          proof.createdAt.month == month.month;
+      final sameMonth =
+          proof.date.year == month.year && proof.date.month == month.month;
       if (!sameMonth) {
         return false;
       }
@@ -418,6 +593,28 @@ class _MonthCard extends StatelessWidget {
       }
 
       return skillFitsAppMode(skillController.skillById(proof.skillId), mode);
+    }).toList();
+  }
+
+  List<PlannedSession> _plannedSessionsForVisibleMonth(
+    List<PlannedSession> sessions,
+    DateTime month,
+    SkillController skillController, {
+    AppMode? mode,
+  }) {
+    return sessions.where((session) {
+      final sameMonth =
+          session.date.year == month.year && session.date.month == month.month;
+      if (!sameMonth) {
+        return false;
+      }
+
+      if (mode == null) {
+        return true;
+      }
+
+      return session.mode == mode ||
+          skillFitsAppMode(skillController.skillById(session.skillId), mode);
     }).toList();
   }
 
@@ -431,6 +628,35 @@ class _MonthCard extends StatelessWidget {
 
     for (final proof in proofs) {
       final skill = skillController.skillById(proof.skillId);
+      if (skillIds.add(skill.id)) {
+        skills.add(skill);
+      }
+    }
+
+    if (focusMode != null) {
+      skills.sort((a, b) {
+        final aFocused = skillFitsAppMode(a, focusMode);
+        final bFocused = skillFitsAppMode(b, focusMode);
+        if (aFocused == bFocused) {
+          return a.name.compareTo(b.name);
+        }
+        return aFocused ? -1 : 1;
+      });
+    }
+
+    return skills;
+  }
+
+  List<Skill> _skillsForPlans(
+    List<PlannedSession> sessions,
+    SkillController skillController, {
+    AppMode? focusMode,
+  }) {
+    final skillIds = <String>{};
+    final skills = <Skill>[];
+
+    for (final session in sessions) {
+      final skill = skillController.skillById(session.skillId);
       if (skillIds.add(skill.id)) {
         skills.add(skill);
       }
@@ -650,8 +876,8 @@ class _CalendarHint extends StatelessWidget {
           Expanded(
             child: Text(
               currentModeOnly
-                  ? 'Showing ${mode.displayName.toLowerCase()} proofs only. Dots use skill colors.'
-                  : 'Dots show the skills you worked on that day. ${mode.displayName} skills appear first.',
+                  ? 'Showing ${mode.displayName.toLowerCase()} schedule items only.'
+                  : 'Filled dots are completed proofs. Hollow dots are planned sessions.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w800,
@@ -699,6 +925,9 @@ class _CalendarDayTile extends StatelessWidget {
     required this.isSelected,
     required this.isToday,
     required this.skills,
+    required this.plannedSkills,
+    required this.hasMissedPlan,
+    required this.hasCompletedPlan,
     required this.focusMode,
     required this.onTap,
   });
@@ -708,6 +937,9 @@ class _CalendarDayTile extends StatelessWidget {
   final bool isSelected;
   final bool isToday;
   final List<Skill> skills;
+  final List<Skill> plannedSkills;
+  final bool hasMissedPlan;
+  final bool hasCompletedPlan;
   final AppMode focusMode;
   final VoidCallback onTap;
 
@@ -715,9 +947,14 @@ class _CalendarDayTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasProofs = skills.isNotEmpty;
+    final hasPlans = plannedSkills.isNotEmpty;
     final hasFocusedProof =
         skills.any((skill) => skillFitsAppMode(skill, focusMode));
-    final primarySkillColor = hasProofs ? skillColor(skills.first) : null;
+    final primarySkillColor = hasProofs
+        ? skillColor(skills.first)
+        : hasPlans
+            ? skillColor(plannedSkills.first)
+            : null;
     final proofAlpha = hasFocusedProof ? 0.16 : 0.09;
 
     return InkWell(
@@ -729,18 +966,24 @@ class _CalendarDayTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: isSelected
               ? colorScheme.primary.withValues(alpha: 0.16)
-              : hasProofs
-                  ? primarySkillColor!.withValues(alpha: proofAlpha)
+              : hasProofs || hasPlans
+                  ? primarySkillColor!.withValues(
+                      alpha: hasProofs ? proofAlpha : 0.06,
+                    )
                   : colorScheme.surfaceContainerHighest.withValues(alpha: 0.35),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
             color: isSelected
                 ? colorScheme.primary
-                : isToday
-                    ? colorScheme.primary.withValues(alpha: 0.45)
-                    : hasFocusedProof
-                        ? colorScheme.primary.withValues(alpha: 0.26)
-                        : colorScheme.onSurface.withValues(alpha: 0.06),
+                : hasMissedPlan
+                    ? colorScheme.onSurfaceVariant.withValues(alpha: 0.28)
+                    : hasCompletedPlan
+                        ? const Color(0xFF00A884).withValues(alpha: 0.45)
+                        : isToday
+                            ? colorScheme.primary.withValues(alpha: 0.45)
+                            : hasFocusedProof
+                                ? colorScheme.primary.withValues(alpha: 0.26)
+                                : colorScheme.onSurface.withValues(alpha: 0.06),
           ),
         ),
         child: Column(
@@ -758,7 +1001,11 @@ class _CalendarDayTile extends StatelessWidget {
                   ),
             ),
             const SizedBox(height: 3),
-            _SkillMarkers(skills: skills, focusMode: focusMode),
+            _SkillMarkers(
+              skills: skills,
+              plannedSkills: plannedSkills,
+              focusMode: focusMode,
+            ),
           ],
         ),
       ),
@@ -769,20 +1016,24 @@ class _CalendarDayTile extends StatelessWidget {
 class _SkillMarkers extends StatelessWidget {
   const _SkillMarkers({
     required this.skills,
+    required this.plannedSkills,
     required this.focusMode,
   });
 
   final List<Skill> skills;
+  final List<Skill> plannedSkills;
   final AppMode focusMode;
 
   @override
   Widget build(BuildContext context) {
-    if (skills.isEmpty) {
+    if (skills.isEmpty && plannedSkills.isEmpty) {
       return const SizedBox(height: 12);
     }
 
     final visibleSkills = skills.take(3).toList();
-    final extraCount = skills.length - visibleSkills.length;
+    final visiblePlans = plannedSkills.take(3 - visibleSkills.length).toList();
+    final extraCount = (skills.length + plannedSkills.length) -
+        (visibleSkills.length + visiblePlans.length);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -809,6 +1060,18 @@ class _SkillMarkers extends StatelessWidget {
             );
           },
         ),
+        ...visiblePlans.map(
+          (skill) => Container(
+            width: 6,
+            height: 6,
+            margin: const EdgeInsets.symmetric(horizontal: 1),
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(color: skillColor(skill), width: 1.2),
+            ),
+          ),
+        ),
         if (extraCount > 0)
           Padding(
             padding: const EdgeInsets.only(left: 1),
@@ -831,40 +1094,113 @@ class _SelectedDayHeader extends StatelessWidget {
   const _SelectedDayHeader({
     required this.selectedDay,
     required this.proofCount,
+    required this.planCount,
+    required this.daySp,
+    required this.onPlanAhead,
   });
 
   final DateTime selectedDay;
   final int proofCount;
+  final int planCount;
+  final int daySp;
+  final VoidCallback onPlanAhead;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                ProofDateUtils.friendlyDate(selectedDay),
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w900,
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(24),
+        border:
+            Border.all(color: colorScheme.onSurface.withValues(alpha: 0.07)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  ProofDateUtils.friendlyDate(selectedDay),
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _DayMetricPill(
+                      icon: Icons.event_available_outlined,
+                      label: '$planCount planned',
                     ),
-              ),
-              const SizedBox(height: 3),
-              Text(
-                proofCount == 1
-                    ? '1 proof logged'
-                    : '$proofCount proofs logged',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      fontWeight: FontWeight.w700,
+                    _DayMetricPill(
+                      icon: Icons.task_alt,
+                      label: '$proofCount done',
                     ),
-              ),
-            ],
+                    _DayMetricPill(
+                      icon: Icons.bolt,
+                      label: '$daySp SP',
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ),
-        const Icon(Icons.event_note, color: Color(0xFF4C74FF)),
-      ],
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            onPressed: onPlanAhead,
+            icon: const Icon(Icons.add),
+            label: const Text('Plan'),
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(92, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DayMetricPill extends StatelessWidget {
+  const _DayMetricPill({
+    required this.icon,
+    required this.label,
+  });
+
+  final IconData icon;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: BoxDecoration(
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.62),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 5),
+          Text(
+            label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -27,7 +27,7 @@ class StatsUtils {
     }
 
     final proofDays = proofs
-        .map((proof) => ProofDateUtils.dateOnly(proof.createdAt))
+        .map((proof) => ProofDateUtils.dateOnly(proof.date))
         .map((date) => date.millisecondsSinceEpoch)
         .toSet();
 
@@ -73,9 +73,13 @@ class StatsUtils {
   }
 
   static List<Proof> proofsFromLastSevenDays(List<Proof> proofs) {
-    final now = DateTime.now();
-    final start = now.subtract(const Duration(days: 7));
-    return proofs.where((proof) => proof.createdAt.isAfter(start)).toList();
+    final today = ProofDateUtils.dateOnly(DateTime.now());
+    final start = today.subtract(const Duration(days: 6));
+    return proofs
+        .where(
+          (proof) => !proof.date.isBefore(start) && !proof.date.isAfter(today),
+        )
+        .toList();
   }
 
   static String weeklyRecap(List<Proof> proofs, List<Skill> skills) {

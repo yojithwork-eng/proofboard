@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/mode_styles.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../models/app_mode.dart';
@@ -63,7 +64,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return AlertDialog(
           title: const Text('Clear all proof data?'),
           content: const Text(
-            'This removes every saved proof from this device. This cannot be undone.',
+            'This removes every saved proof and planned session from this device. This cannot be undone.',
           ),
           actions: [
             TextButton(
@@ -82,8 +83,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (shouldClear == true && context.mounted) {
       await context.read<ProofController>().clearProofs();
       if (context.mounted) {
+        await context.read<PlannedSessionController>().clearSessions();
+      }
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('All proof data cleared')),
+          const SnackBar(content: Text('All proof and schedule data cleared')),
         );
       }
     }
@@ -291,8 +295,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                Consumer<ProofController>(
-                  builder: (context, controller, child) {
+                Consumer2<ProofController, PlannedSessionController>(
+                  builder: (context, controller, plannedController, child) {
+                    final canClear = controller.totalProofs > 0 ||
+                        plannedController.sessions.isNotEmpty;
                     return _SettingsSection(
                       title: 'Data',
                       icon: Icons.storage_outlined,
@@ -309,17 +315,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: _DataTile(
-                                  label: 'Minutes',
-                                  value: '${controller.totalMinutes}',
+                                  label: 'Plans',
+                                  value: '${plannedController.sessions.length}',
                                 ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 14),
                           OutlinedButton.icon(
-                            onPressed: controller.totalProofs == 0
-                                ? null
-                                : () => _confirmClearData(context),
+                            onPressed: canClear
+                                ? () => _confirmClearData(context)
+                                : null,
                             icon: const Icon(Icons.delete_outline),
                             label: const Text('Clear all proof data'),
                           ),

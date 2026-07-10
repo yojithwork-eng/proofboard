@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
+import '../controllers/planned_session_controller.dart';
 import '../controllers/proof_controller.dart';
 import '../controllers/skill_controller.dart';
 import '../models/proof.dart';
 import '../models/skill.dart';
+import '../utils/date_utils.dart';
+import '../utils/skill_points_utils.dart';
 
 class EditProofScreen extends StatefulWidget {
   const EditProofScreen({super.key, required this.proof});
@@ -23,6 +26,9 @@ class _EditProofScreenState extends State<EditProofScreen> {
   late final TextEditingController _noteController;
 
   late String _selectedSkillId;
+  late DateTime _selectedDate;
+  String? _startTime;
+  String? _endTime;
   bool _isSaving = false;
 
   @override
@@ -34,6 +40,9 @@ class _EditProofScreenState extends State<EditProofScreen> {
     );
     _noteController = TextEditingController(text: widget.proof.note);
     _selectedSkillId = widget.proof.skillId;
+    _selectedDate = widget.proof.date;
+    _startTime = widget.proof.startTime;
+    _endTime = widget.proof.endTime;
   }
 
   @override
@@ -51,16 +60,28 @@ class _EditProofScreenState extends State<EditProofScreen> {
 
     setState(() => _isSaving = true);
 
-    final updatedProof = Proof(
-      id: widget.proof.id,
+    final proofController = context.read<ProofController>();
+    final plannedController = context.read<PlannedSessionController>();
+    final plannedSession =
+        plannedController.sessionById(widget.proof.plannedSessionId);
+    final minutes = int.parse(_minutesController.text.trim());
+    final updatedProof = widget.proof.copyWith(
       title: _titleController.text.trim(),
       skillId: _selectedSkillId,
-      minutes: int.parse(_minutesController.text.trim()),
+      minutes: minutes,
       note: _noteController.text.trim(),
-      createdAt: widget.proof.createdAt,
+      date: _selectedDate,
+      startTime: _startTime,
+      endTime: _endTime,
+      baseSp: SkillPointsUtils.baseSpForMinutes(minutes),
+      bonusSp: SkillPointsUtils.bonusForProof(
+        completedMinutes: minutes,
+        plannedSession: plannedSession,
+      ),
     );
 
-    await context.read<ProofController>().updateProof(updatedProof);
+    await proofController.updateProof(updatedProof);
+    await plannedController.markFromProof(updatedProof);
 
     if (!mounted) {
       return;
@@ -136,6 +157,15 @@ class _EditProofScreenState extends State<EditProofScreen> {
                       },
                     ),
                     const SizedBox(height: 14),
+                    _DateTimePickerRow(
+                      selectedDate: _selectedDate,
+                      startTime: _startTime,
+                      endTime: _endTime,
+                      onPickDate: _pickDate,
+                      onPickStart: () => _pickTime(isStart: true),
+                      onPickEnd: () => _pickTime(isStart: false),
+                    ),
+                    const SizedBox(height: 14),
                     TextFormField(
                       controller: _minutesController,
                       keyboardType: TextInputType.number,
@@ -145,6 +175,21 @@ class _EditProofScreenState extends State<EditProofScreen> {
                         prefixIcon: Icon(Icons.timer_outlined),
                       ),
                       validator: (value) {
+                        final hasOnlyOneTime =
+                            (_startTime == null) != (_endTime == null);
+                        if (hasOnlyOneTime) {
+                          return 'Choose both start and end time, or neither';
+                        }
+
+                        if (_startTime != null &&
+                            ProofDateUtils.minutesBetween(
+                                  _startTime,
+                                  _endTime,
+                                ) <=
+                                0) {
+                          return 'End time must be after start time';
+                        }
+
                         final minutes = int.tryParse(value?.trim() ?? '');
                         if (minutes == null || minutes <= 0) {
                           return 'Minutes must be a positive number';
@@ -183,6 +228,119 @@ class _EditProofScreenState extends State<EditProofScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+
+    if (picked != null) {
+      setState(() => _selectedDate = ProofDateUtils.dateOnly(picked));
+    }
+  }
+
+  Future<void> _pickTime({required bool isStart}) async {
+    final initialValue = _timeOfDayFromString(
+      isStart ? _startTime : _endTime,
+    );
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: initialValue ?? TimeOfDay.now(),
+    );
+
+    if (picked == null) {
+      return;
+    }
+
+    setState(() {
+      if (isStart) {
+        _startTime = _formatTimeOfDay(picked);
+      } else {
+        _endTime = _formatTimeOfDay(picked);
+      }
+
+      final minutes = ProofDateUtils.minutesBetween(_startTime, _endTime);
+      if (minutes > 0) {
+        _minutesController.text = minutes.toString();
+      }
+    });
+  }
+
+  String _formatTimeOfDay(TimeOfDay value) {
+    final hour = value.hour.toString().padLeft(2, '0');
+    final minute = value.minute.toString().padLeft(2, '0');
+    return '$hour:$minute';
+  }
+
+  TimeOfDay? _timeOfDayFromString(String? value) {
+    final minutes = ProofDateUtils.minutesFromTimeString(value);
+    if (minutes == null) {
+      return null;
+    }
+    return TimeOfDay(hour: minutes ~/ 60, minute: minutes % 60);
+  }
+}
+
+class _DateTimePickerRow extends StatelessWidget {
+  const _DateTimePickerRow({
+    required this.selectedDate,
+    required this.startTime,
+    required this.endTime,
+    required this.onPickDate,
+    required this.onPickStart,
+    required this.onPickEnd,
+  });
+
+  final DateTime selectedDate;
+  final String? startTime;
+  final String? endTime;
+  final VoidCallback onPickDate;
+  final VoidCallback onPickStart;
+  final VoidCallback onPickEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        OutlinedButton.icon(
+          onPressed: onPickDate,
+          icon: const Icon(Icons.calendar_today_outlined),
+          label: Text(ProofDateUtils.friendlyDate(selectedDate)),
+        ),
+        const SizedBox(height: 10),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onPickStart,
+                icon: const Icon(Icons.play_arrow_outlined),
+                label: Text(
+                  startTime == null
+                      ? 'Start time'
+                      : ProofDateUtils.formatTimeLabel(startTime),
+                ),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: onPickEnd,
+                icon: const Icon(Icons.flag_outlined),
+                label: Text(
+                  endTime == null
+                      ? 'End time'
+                      : ProofDateUtils.formatTimeLabel(endTime),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
