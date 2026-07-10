@@ -11,6 +11,7 @@ import '../models/skill.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/recap_sheet.dart';
 import '../widgets/stat_card.dart';
+import 'export_center_screen.dart';
 
 class StatsScreen extends StatelessWidget {
   const StatsScreen({super.key});
@@ -22,6 +23,14 @@ class StatsScreen extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       builder: (context) => RecapSheet(title: title, recap: recap),
+    );
+  }
+
+  void _openExportCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const ExportCenterScreen(),
+      ),
     );
   }
 
@@ -102,6 +111,7 @@ class StatsScreen extends StatelessWidget {
                 'Share Summary',
                 controller.shareRecap(skills),
               ),
+              onOpenExportCenter: () => _openExportCenter(context),
             ),
             const SizedBox(height: 26),
             Text(
@@ -233,10 +243,12 @@ class _RecapActions extends StatelessWidget {
   const _RecapActions({
     required this.onWeeklyRecap,
     required this.onShareSummary,
+    required this.onOpenExportCenter,
   });
 
   final VoidCallback onWeeklyRecap;
   final VoidCallback onShareSummary;
+  final VoidCallback onOpenExportCenter;
 
   @override
   Widget build(BuildContext context) {
@@ -262,6 +274,12 @@ class _RecapActions extends StatelessWidget {
             onPressed: onShareSummary,
             icon: const Icon(Icons.ios_share_outlined),
             label: const Text('Create Copyable Summary'),
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton.icon(
+            onPressed: onOpenExportCenter,
+            icon: const Icon(Icons.file_upload_outlined),
+            label: const Text('Open Export Center'),
           ),
         ],
       ),

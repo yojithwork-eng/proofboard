@@ -6,6 +6,7 @@ import '../controllers/proof_controller.dart';
 import '../controllers/settings_controller.dart';
 import '../models/app_mode.dart';
 import '../widgets/mode_activation_overlay.dart';
+import 'export_center_screen.dart';
 import 'manage_skills_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -86,6 +87,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  void _openExportCenter(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => const ExportCenterScreen(),
+      ),
+    );
   }
 
   @override
@@ -255,6 +264,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     },
                     icon: const Icon(Icons.tune),
                     label: const Text('Manage Skills'),
+                  ),
+                ),
+                const SizedBox(height: 14),
+                _SettingsSection(
+                  title: 'Export',
+                  icon: Icons.file_upload_outlined,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Create copy-paste text for resumes, LinkedIn, social posts, and portfolios.',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w700,
+                              height: 1.35,
+                            ),
+                      ),
+                      const SizedBox(height: 12),
+                      OutlinedButton.icon(
+                        onPressed: () => _openExportCenter(context),
+                        icon: const Icon(Icons.ios_share_outlined),
+                        label: const Text('Open Export Center'),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 14),
