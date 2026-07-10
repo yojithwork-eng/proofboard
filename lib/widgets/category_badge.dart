@@ -1,21 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../constants/categories.dart';
-import '../models/proof.dart';
+import '../models/skill.dart';
 
-class CategoryBadge extends StatelessWidget {
-  const CategoryBadge({
+class SkillBadge extends StatelessWidget {
+  const SkillBadge({
     super.key,
-    required this.category,
+    required this.skill,
     this.compact = false,
   });
 
-  final ProofCategory category;
+  final Skill skill;
   final bool compact;
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(category);
+    final color = skillColor(skill);
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -30,10 +30,10 @@ class CategoryBadge extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(categoryIcon(category), size: compact ? 14 : 16, color: color),
+          Icon(skillIcon(skill), size: compact ? 14 : 16, color: color),
           const SizedBox(width: 6),
           Text(
-            category.displayName,
+            skill.name,
             style: TextStyle(
               color: color,
               fontSize: compact ? 12 : 13,

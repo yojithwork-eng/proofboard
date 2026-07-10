@@ -1,41 +1,10 @@
-enum ProofCategory {
-  coding,
-  cad,
-  robotics,
-  gym,
-  studying,
-  networking,
-  reading,
-  other,
-}
-
-extension ProofCategoryDisplay on ProofCategory {
-  String get displayName {
-    return switch (this) {
-      ProofCategory.coding => 'Coding',
-      ProofCategory.cad => 'CAD',
-      ProofCategory.robotics => 'Robotics',
-      ProofCategory.gym => 'Gym',
-      ProofCategory.studying => 'Studying',
-      ProofCategory.networking => 'Networking',
-      ProofCategory.reading => 'Reading',
-      ProofCategory.other => 'Other',
-    };
-  }
-
-  static ProofCategory fromName(String? name) {
-    return ProofCategory.values.firstWhere(
-      (category) => category.name == name,
-      orElse: () => ProofCategory.other,
-    );
-  }
-}
+import 'skill.dart';
 
 class Proof {
   const Proof({
     required this.id,
     required this.title,
-    required this.category,
+    required this.skillId,
     required this.minutes,
     required this.note,
     required this.createdAt,
@@ -43,7 +12,7 @@ class Proof {
 
   final String id;
   final String title;
-  final ProofCategory category;
+  final String skillId;
   final int minutes;
   final String note;
   final DateTime createdAt;
@@ -52,7 +21,7 @@ class Proof {
     return {
       'id': id,
       'title': title,
-      'category': category.name,
+      'skillId': skillId,
       'minutes': minutes,
       'note': note,
       'createdAt': createdAt.toIso8601String(),
@@ -60,10 +29,15 @@ class Proof {
   }
 
   factory Proof.fromJson(Map<String, dynamic> json) {
+    final savedSkillId = json['skillId'] as String?;
+    final legacyCategory = json['category'] as String?;
+
     return Proof(
       id: json['id'] as String? ?? '',
       title: json['title'] as String? ?? 'Untitled proof',
-      category: ProofCategoryDisplay.fromName(json['category'] as String?),
+      skillId: savedSkillId?.isNotEmpty == true
+          ? savedSkillId!
+          : Skill.idForLegacyCategory(legacyCategory),
       minutes: json['minutes'] is int ? json['minutes'] as int : 0,
       note: json['note'] as String? ?? '',
       createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??

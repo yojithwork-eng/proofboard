@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/proof.dart';
+import '../models/skill.dart';
 import '../services/proof_storage_service.dart';
 import '../utils/stats_utils.dart';
 
@@ -24,14 +25,14 @@ class ProofController extends ChangeNotifier {
 
   int get totalMinutes => StatsUtils.totalMinutes(_proofs);
 
-  int get activeCategories => StatsUtils.activeCategoryCount(_proofs);
+  int get activeSkills => StatsUtils.activeSkillCount(_proofs);
 
   int get currentStreak => StatsUtils.currentStreak(_proofs);
 
-  String get bestCategory => StatsUtils.bestCategoryName(_proofs);
+  String bestSkill(List<Skill> skills) =>
+      StatsUtils.bestSkillName(_proofs, skills);
 
-  Map<ProofCategory, int> get categoryCounts =>
-      StatsUtils.categoryCounts(_proofs);
+  Map<String, int> get skillCounts => StatsUtils.skillCounts(_proofs);
 
   Future<void> loadProofs() async {
     _isLoading = true;
@@ -69,11 +70,15 @@ class ProofController extends ChangeNotifier {
     notifyListeners();
   }
 
-  String weeklyRecap() {
-    return StatsUtils.weeklyRecap(_proofs);
+  bool isSkillUsed(String skillId) {
+    return _proofs.any((proof) => proof.skillId == skillId);
   }
 
-  String shareRecap() {
-    return StatsUtils.shareRecap(_proofs);
+  String weeklyRecap(List<Skill> skills) {
+    return StatsUtils.weeklyRecap(_proofs, skills);
+  }
+
+  String shareRecap(List<Skill> skills) {
+    return StatsUtils.shareRecap(_proofs, skills);
   }
 }

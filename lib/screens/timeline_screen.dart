@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../controllers/proof_controller.dart';
+import '../controllers/skill_controller.dart';
 import '../models/proof.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/proof_card.dart';
@@ -53,8 +54,8 @@ class TimelineScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ProofController>(
-      builder: (context, controller, child) {
+    return Consumer2<ProofController, SkillController>(
+      builder: (context, controller, skillController, child) {
         final proofs = controller.proofs;
 
         return ListView(
@@ -75,6 +76,7 @@ class TimelineScreen extends StatelessWidget {
                   padding: const EdgeInsets.only(bottom: 14),
                   child: ProofCard(
                     proof: proof,
+                    skill: skillController.skillById(proof.skillId),
                     onTap: () => _openEditScreen(context, proof),
                     onEdit: () => _openEditScreen(context, proof),
                     onDelete: () => _confirmDelete(context, proof),

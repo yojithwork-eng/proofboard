@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../constants/categories.dart';
 import '../models/proof.dart';
+import '../models/skill.dart';
 import '../utils/date_utils.dart';
 import 'category_badge.dart';
 
@@ -9,12 +10,14 @@ class ProofCard extends StatelessWidget {
   const ProofCard({
     super.key,
     required this.proof,
+    required this.skill,
     this.onTap,
     this.onEdit,
     this.onDelete,
   });
 
   final Proof proof;
+  final Skill skill;
   final VoidCallback? onTap;
   final VoidCallback? onEdit;
   final VoidCallback? onDelete;
@@ -23,7 +26,7 @@ class ProofCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final accent = categoryColor(proof.category);
+    final accent = skillColor(skill);
 
     return Container(
       decoration: BoxDecoration(
@@ -80,7 +83,7 @@ class ProofCard extends StatelessWidget {
                             borderRadius: BorderRadius.circular(14),
                           ),
                           child: Icon(
-                            categoryIcon(proof.category),
+                            skillIcon(skill),
                             color: accent,
                             size: 20,
                           ),
@@ -101,10 +104,7 @@ class ProofCard extends StatelessWidget {
                                     ),
                               ),
                               const SizedBox(height: 7),
-                              CategoryBadge(
-                                category: proof.category,
-                                compact: true,
-                              ),
+                              SkillBadge(skill: skill, compact: true),
                             ],
                           ),
                         ),

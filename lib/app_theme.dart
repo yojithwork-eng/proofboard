@@ -1,40 +1,67 @@
 import 'package:flutter/material.dart';
 
-ThemeData buildLightAppTheme() {
+import 'constants/mode_styles.dart';
+import 'models/app_mode.dart';
+
+ThemeData buildLightAppTheme([AppMode mode = AppMode.general]) {
   return _buildAppTheme(
+    mode: mode,
     brightness: Brightness.light,
-    pageBackground: const Color(0xFFF2F6FF),
+    pageBackground: switch (mode) {
+      AppMode.general => const Color(0xFFF7F4FF),
+      AppMode.productivity => const Color(0xFFF2F6FF),
+      AppMode.selfImprovement => const Color(0xFFF1FBF6),
+    },
     surface: Colors.white,
     onSurface: const Color(0xFF07152F),
-    surfaceVariant: const Color(0xFFEAF0FF),
+    surfaceVariant: switch (mode) {
+      AppMode.general => const Color(0xFFF0E9FF),
+      AppMode.productivity => const Color(0xFFEAF0FF),
+      AppMode.selfImprovement => const Color(0xFFE5F6EC),
+    },
   );
 }
 
-ThemeData buildDarkAppTheme() {
+ThemeData buildDarkAppTheme([AppMode mode = AppMode.general]) {
   return _buildAppTheme(
+    mode: mode,
     brightness: Brightness.dark,
-    pageBackground: const Color(0xFF050B18),
-    surface: const Color(0xFF0D172B),
+    pageBackground: switch (mode) {
+      AppMode.general => const Color(0xFF0A0716),
+      AppMode.productivity => const Color(0xFF050B18),
+      AppMode.selfImprovement => const Color(0xFF04120E),
+    },
+    surface: switch (mode) {
+      AppMode.general => const Color(0xFF151126),
+      AppMode.productivity => const Color(0xFF0D172B),
+      AppMode.selfImprovement => const Color(0xFF0B1D18),
+    },
     onSurface: const Color(0xFFF4F7FF),
-    surfaceVariant: const Color(0xFF14213A),
+    surfaceVariant: switch (mode) {
+      AppMode.general => const Color(0xFF22183C),
+      AppMode.productivity => const Color(0xFF14213A),
+      AppMode.selfImprovement => const Color(0xFF123127),
+    },
   );
 }
 
 ThemeData _buildAppTheme({
+  required AppMode mode,
   required Brightness brightness,
   required Color pageBackground,
   required Color surface,
   required Color onSurface,
   required Color surfaceVariant,
 }) {
-  const seedColor = Color(0xFF4C74FF);
+  final seedColor = modeAccentColor(mode);
+  final secondaryColor = modeSecondaryColor(mode);
   final isDark = brightness == Brightness.dark;
   final colorScheme = ColorScheme.fromSeed(
     seedColor: seedColor,
     brightness: brightness,
   ).copyWith(
     primary: seedColor,
-    secondary: const Color(0xFF00B8D9),
+    secondary: secondaryColor,
     surface: surface,
     onSurface: onSurface,
     surfaceContainerHighest: surfaceVariant,
@@ -106,7 +133,7 @@ ThemeData _buildAppTheme({
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),
-        borderSide: const BorderSide(color: seedColor, width: 1.6),
+        borderSide: BorderSide(color: seedColor, width: 1.6),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(18),

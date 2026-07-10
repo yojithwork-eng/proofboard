@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
 import '../controllers/proof_controller.dart';
+import '../controllers/skill_controller.dart';
 import '../models/proof.dart';
+import '../models/skill.dart';
 
 class EditProofScreen extends StatefulWidget {
   const EditProofScreen({super.key, required this.proof});
@@ -20,7 +22,7 @@ class _EditProofScreenState extends State<EditProofScreen> {
   late final TextEditingController _minutesController;
   late final TextEditingController _noteController;
 
-  late ProofCategory _selectedCategory;
+  late String _selectedSkillId;
   bool _isSaving = false;
 
   @override
@@ -31,7 +33,7 @@ class _EditProofScreenState extends State<EditProofScreen> {
       text: widget.proof.minutes.toString(),
     );
     _noteController = TextEditingController(text: widget.proof.note);
-    _selectedCategory = widget.proof.category;
+    _selectedSkillId = widget.proof.skillId;
   }
 
   @override
@@ -52,7 +54,7 @@ class _EditProofScreenState extends State<EditProofScreen> {
     final updatedProof = Proof(
       id: widget.proof.id,
       title: _titleController.text.trim(),
-      category: _selectedCategory,
+      skillId: _selectedSkillId,
       minutes: int.parse(_minutesController.text.trim()),
       note: _noteController.text.trim(),
       createdAt: widget.proof.createdAt,
@@ -103,30 +105,34 @@ class _EditProofScreenState extends State<EditProofScreen> {
                       },
                     ),
                     const SizedBox(height: 14),
-                    DropdownButtonFormField<ProofCategory>(
-                      initialValue: _selectedCategory,
-                      decoration: const InputDecoration(
-                        labelText: 'Category',
-                        prefixIcon: Icon(Icons.category_outlined),
-                      ),
-                      items: proofCategories
-                          .map(
-                            (category) => DropdownMenuItem(
-                              value: category,
-                              child: Text(category.displayName),
-                            ),
-                          )
-                          .toList(),
-                      onChanged: (category) {
-                        if (category != null) {
-                          setState(() => _selectedCategory = category);
-                        }
-                      },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Category is required';
-                        }
-                        return null;
+                    Consumer<SkillController>(
+                      builder: (context, skillController, child) {
+                        return DropdownButtonFormField<String>(
+                          initialValue: _selectedSkillId,
+                          decoration: const InputDecoration(
+                            labelText: 'Skill',
+                            prefixIcon: Icon(Icons.auto_awesome),
+                          ),
+                          items: skillController.skills
+                              .map(
+                                (skill) => DropdownMenuItem(
+                                  value: skill.id,
+                                  child: _SkillOption(skill: skill),
+                                ),
+                              )
+                              .toList(),
+                          onChanged: (skillId) {
+                            if (skillId != null) {
+                              setState(() => _selectedSkillId = skillId);
+                            }
+                          },
+                          validator: (value) {
+                            if (value == null) {
+                              return 'Skill is required';
+                            }
+                            return null;
+                          },
+                        );
                       },
                     ),
                     const SizedBox(height: 14),
@@ -177,6 +183,26 @@ class _EditProofScreenState extends State<EditProofScreen> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _SkillOption extends StatelessWidget {
+  const _SkillOption({required this.skill});
+
+  final Skill skill;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = skillColor(skill);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(skillIcon(skill), color: color, size: 18),
+        const SizedBox(width: 8),
+        Text(skill.name),
+      ],
     );
   }
 }

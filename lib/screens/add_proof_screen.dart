@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
 import '../controllers/proof_controller.dart';
+import '../controllers/skill_controller.dart';
 import '../models/proof.dart';
+import '../models/skill.dart';
 
 class AddProofScreen extends StatefulWidget {
   const AddProofScreen({super.key, required this.onSaved});
@@ -20,7 +22,7 @@ class _AddProofScreenState extends State<AddProofScreen> {
   final _minutesController = TextEditingController();
   final _noteController = TextEditingController();
 
-  ProofCategory? _selectedCategory;
+  String? _selectedSkillId;
   bool _isSaving = false;
 
   @override
@@ -41,7 +43,7 @@ class _AddProofScreenState extends State<AddProofScreen> {
     final proof = Proof(
       id: DateTime.now().microsecondsSinceEpoch.toString(),
       title: _titleController.text.trim(),
-      category: _selectedCategory!,
+      skillId: _selectedSkillId!,
       minutes: int.parse(_minutesController.text.trim()),
       note: _noteController.text.trim(),
       createdAt: DateTime.now(),
@@ -57,7 +59,7 @@ class _AddProofScreenState extends State<AddProofScreen> {
     _minutesController.clear();
     _noteController.clear();
     setState(() {
-      _selectedCategory = null;
+      _selectedSkillId = null;
       _isSaving = false;
     });
 
@@ -100,28 +102,32 @@ class _AddProofScreenState extends State<AddProofScreen> {
                   },
                 ),
                 const SizedBox(height: 14),
-                DropdownButtonFormField<ProofCategory>(
-                  initialValue: _selectedCategory,
-                  decoration: const InputDecoration(
-                    labelText: 'Category',
-                    prefixIcon: Icon(Icons.category_outlined),
-                  ),
-                  items: proofCategories
-                      .map(
-                        (category) => DropdownMenuItem(
-                          value: category,
-                          child: Text(category.displayName),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: (category) {
-                    setState(() => _selectedCategory = category);
-                  },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Category is required';
-                    }
-                    return null;
+                Consumer<SkillController>(
+                  builder: (context, skillController, child) {
+                    return DropdownButtonFormField<String>(
+                      initialValue: _selectedSkillId,
+                      decoration: const InputDecoration(
+                        labelText: 'Skill',
+                        prefixIcon: Icon(Icons.auto_awesome),
+                      ),
+                      items: skillController.skills
+                          .map(
+                            (skill) => DropdownMenuItem(
+                              value: skill.id,
+                              child: _SkillOption(skill: skill),
+                            ),
+                          )
+                          .toList(),
+                      onChanged: (skillId) {
+                        setState(() => _selectedSkillId = skillId);
+                      },
+                      validator: (value) {
+                        if (value == null) {
+                          return 'Skill is required';
+                        }
+                        return null;
+                      },
+                    );
                   },
                 ),
                 const SizedBox(height: 14),
@@ -170,6 +176,26 @@ class _AddProofScreenState extends State<AddProofScreen> {
             ),
           ),
         ),
+      ],
+    );
+  }
+}
+
+class _SkillOption extends StatelessWidget {
+  const _SkillOption({required this.skill});
+
+  final Skill skill;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = skillColor(skill);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(skillIcon(skill), color: color, size: 18),
+        const SizedBox(width: 8),
+        Text(skill.name),
       ],
     );
   }

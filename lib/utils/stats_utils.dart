@@ -1,5 +1,5 @@
-import '../constants/categories.dart';
 import '../models/proof.dart';
+import '../models/skill.dart';
 import 'date_utils.dart';
 
 class StatsUtils {
@@ -7,18 +7,18 @@ class StatsUtils {
     return proofs.fold(0, (sum, proof) => sum + proof.minutes);
   }
 
-  static Map<ProofCategory, int> categoryCounts(List<Proof> proofs) {
-    final counts = <ProofCategory, int>{};
+  static Map<String, int> skillCounts(List<Proof> proofs) {
+    final counts = <String, int>{};
 
     for (final proof in proofs) {
-      counts.update(proof.category, (count) => count + 1, ifAbsent: () => 1);
+      counts.update(proof.skillId, (count) => count + 1, ifAbsent: () => 1);
     }
 
     return counts;
   }
 
-  static int activeCategoryCount(List<Proof> proofs) {
-    return categoryCounts(proofs).length;
+  static int activeSkillCount(List<Proof> proofs) {
+    return skillCounts(proofs).length;
   }
 
   static int currentStreak(List<Proof> proofs) {
@@ -52,13 +52,17 @@ class StatsUtils {
     return streak;
   }
 
-  static String bestCategoryName(List<Proof> proofs) {
-    final best = bestCategory(proofs);
-    return best?.displayName ?? 'None yet';
+  static String bestSkillName(List<Proof> proofs, List<Skill> skills) {
+    final best = bestSkillId(proofs);
+    if (best == null) {
+      return 'None yet';
+    }
+
+    return _skillNameFor(best, skills);
   }
 
-  static ProofCategory? bestCategory(List<Proof> proofs) {
-    final counts = categoryCounts(proofs);
+  static String? bestSkillId(List<Proof> proofs) {
+    final counts = skillCounts(proofs);
     if (counts.isEmpty) {
       return null;
     }
@@ -74,40 +78,38 @@ class StatsUtils {
     return proofs.where((proof) => proof.createdAt.isAfter(start)).toList();
   }
 
-  static String weeklyRecap(List<Proof> proofs) {
+  static String weeklyRecap(List<Proof> proofs, List<Skill> skills) {
     final weeklyProofs = proofsFromLastSevenDays(proofs);
     if (weeklyProofs.isEmpty) {
       return 'No proofs logged this week yet. Add one small proof today and start building momentum.';
     }
 
-    final categories = _categoryNamesFor(weeklyProofs);
-    final strongest = bestCategoryName(weeklyProofs);
+    final skillNames = _skillNamesFor(weeklyProofs, skills);
+    final strongest = bestSkillName(weeklyProofs, skills);
     final minutes = totalMinutes(weeklyProofs);
 
-    return 'This week you logged ${weeklyProofs.length} proofs across $categories for a total of $minutes minutes. Your strongest category was $strongest. Keep building proof one day at a time.';
+    return 'This week you logged ${weeklyProofs.length} proofs across $skillNames for a total of $minutes minutes. Your strongest skill was $strongest. Keep building proof one day at a time.';
   }
 
-  static String shareRecap(List<Proof> proofs) {
+  static String shareRecap(List<Proof> proofs, List<Skill> skills) {
     final weeklyProofs = proofsFromLastSevenDays(proofs);
     if (weeklyProofs.isEmpty) {
       return 'This week on ProofBoard, I am starting my proof-of-work habit. Small steps, real proof.';
     }
 
-    final categories = _categoryNamesFor(weeklyProofs);
+    final skillNames = _skillNamesFor(weeklyProofs, skills);
     final minutes = totalMinutes(weeklyProofs);
 
-    return 'This week on ProofBoard, I logged ${weeklyProofs.length} proofs of work across $categories. Total focused time: $minutes minutes. Small steps, real proof.';
+    return 'This week on ProofBoard, I logged ${weeklyProofs.length} proofs of work across $skillNames. Total focused time: $minutes minutes. Small steps, real proof.';
   }
 
-  static String _categoryNamesFor(List<Proof> proofs) {
-    final counts = categoryCounts(proofs);
-    final names = proofCategories
-        .where((category) => counts.containsKey(category))
-        .map((category) => category.displayName)
-        .toList();
+  static String _skillNamesFor(List<Proof> proofs, List<Skill> skills) {
+    final counts = skillCounts(proofs);
+    final names =
+        counts.keys.map((skillId) => _skillNameFor(skillId, skills)).toList();
 
     if (names.isEmpty) {
-      return 'no categories yet';
+      return 'no skills yet';
     }
 
     if (names.length == 1) {
@@ -119,5 +121,23 @@ class StatsUtils {
     }
 
     return '${names.sublist(0, names.length - 1).join(', ')}, and ${names.last}';
+  }
+
+  static String _skillNameFor(String skillId, List<Skill> skills) {
+    return skills
+        .firstWhere(
+          (skill) => skill.id == skillId,
+          orElse: () => starterSkills.firstWhere(
+            (skill) => skill.id == skillId,
+            orElse: () => const Skill(
+              id: 'skill_other',
+              name: 'Other',
+              colorValue: defaultSkillColorValue,
+              iconName: 'auto_awesome',
+              mode: SkillMode.general,
+            ),
+          ),
+        )
+        .name;
   }
 }

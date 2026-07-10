@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
+import '../constants/mode_styles.dart';
 import '../controllers/proof_controller.dart';
-import '../models/proof.dart';
+import '../controllers/settings_controller.dart';
+import '../controllers/skill_controller.dart';
+import '../models/app_mode.dart';
+import '../models/resource.dart';
+import '../models/skill.dart';
 import '../utils/date_utils.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/proof_card.dart';
@@ -20,11 +26,15 @@ class HomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ProofController>(
-      builder: (context, controller, child) {
-        final counts = controller.categoryCounts;
+    return Consumer3<ProofController, SkillController, SettingsController>(
+      builder: (context, controller, skillController, settings, child) {
+        final appMode = settings.appMode;
+        final counts = controller.skillCounts;
         final maxCount =
             counts.isEmpty ? 1 : counts.values.reduce((a, b) => a > b ? a : b);
+        final activeSkills = skillController.skills
+            .where((skill) => counts.containsKey(skill.id))
+            .toList();
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
@@ -33,10 +43,29 @@ class HomeScreen extends StatelessWidget {
               streak: controller.currentStreak,
               totalProofs: controller.totalProofs,
               totalMinutes: controller.totalMinutes,
+              mode: appMode,
               onOpenSettings: onOpenSettings,
             ),
             const SizedBox(height: 16),
-            _MissionCard(onAddProof: onAddProof),
+            _MissionCard(mode: appMode, onAddProof: onAddProof),
+            const SizedBox(height: 18),
+            _SuggestedSkillsSection(
+              mode: appMode,
+              skills: skillController.skills,
+              onAddSkill: (suggestion) async {
+                await skillController.addSkill(suggestion.toSkill());
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('${suggestion.name} added')),
+                  );
+                }
+              },
+            ),
+            const SizedBox(height: 18),
+            _ResourcesSection(
+              mode: appMode,
+              skills: skillController.skills,
+            ),
             const SizedBox(height: 26),
             const _SectionTitle(
               title: 'Recent Proofs',
@@ -62,26 +91,28 @@ class HomeScreen extends StatelessWidget {
               ...controller.proofs.take(3).map(
                     (proof) => Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: ProofCard(proof: proof),
+                      child: ProofCard(
+                        proof: proof,
+                        skill: skillController.skillById(proof.skillId),
+                      ),
                     ),
                   ),
             if (controller.proofs.isNotEmpty) ...[
               const SizedBox(height: 14),
               const _SectionTitle(
                 title: 'Skill Lanes',
-                subtitle: 'Your proof stack by category',
+                subtitle: 'Your proof stack by skill',
               ),
               const SizedBox(height: 12),
               Column(
-                children: proofCategories
-                    .where((category) => counts.containsKey(category))
+                children: activeSkills
                     .map(
-                      (category) => Padding(
+                      (skill) => Padding(
                         padding: const EdgeInsets.only(bottom: 12),
-                        child: _CategorySummaryCard(
-                          category: category,
-                          count: counts[category] ?? 0,
-                          progress: (counts[category] ?? 0) / maxCount,
+                        child: _SkillSummaryCard(
+                          skill: skill,
+                          count: counts[skill.id] ?? 0,
+                          progress: (counts[skill.id] ?? 0) / maxCount,
                         ),
                       ),
                     )
@@ -100,32 +131,33 @@ class _HomeHero extends StatelessWidget {
     required this.streak,
     required this.totalProofs,
     required this.totalMinutes,
+    required this.mode,
     required this.onOpenSettings,
   });
 
   final int streak;
   final int totalProofs;
   final int totalMinutes;
+  final AppMode mode;
   final VoidCallback onOpenSettings;
 
   @override
   Widget build(BuildContext context) {
+    final gradientColors = modeGradientColors(mode);
+    final accent = modeAccentColor(mode);
+
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF07152F),
-            Color(0xFF123B8E),
-            Color(0xFF2457FF),
-          ],
+          colors: gradientColors,
         ),
         borderRadius: BorderRadius.circular(30),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFF2457FF).withValues(alpha: 0.24),
+            color: accent.withValues(alpha: 0.24),
             blurRadius: 28,
             offset: const Offset(0, 16),
           ),
@@ -136,24 +168,51 @@ class _HomeHero extends StatelessWidget {
         children: [
           Row(
             children: [
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  ProofDateUtils.todayLabel(),
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                        color: Colors.white.withValues(alpha: 0.88),
-                        fontWeight: FontWeight.w900,
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
                       ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        ProofDateUtils.todayLabel(),
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${mode.shortLabel} mode',
+                        style:
+                            Theme.of(context).textTheme.labelMedium?.copyWith(
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  fontWeight: FontWeight.w900,
+                                ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-              const Spacer(),
+              const SizedBox(width: 8),
               IconButton.filledTonal(
                 tooltip: 'Open settings',
                 onPressed: onOpenSettings,
@@ -167,7 +226,7 @@ class _HomeHero extends StatelessWidget {
           ),
           const SizedBox(height: 22),
           Text(
-            'Build your proof stack',
+            mode.homeHeadline,
             style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                   color: Colors.white,
                   fontWeight: FontWeight.w900,
@@ -176,7 +235,7 @@ class _HomeHero extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Small work today. Real portfolio tomorrow.',
+            mode.homeSubtitle,
             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                   color: Colors.white.withValues(alpha: 0.78),
                   height: 1.35,
@@ -265,12 +324,18 @@ class _HeroMetric extends StatelessWidget {
 }
 
 class _MissionCard extends StatelessWidget {
-  const _MissionCard({required this.onAddProof});
+  const _MissionCard({
+    required this.mode,
+    required this.onAddProof,
+  });
 
+  final AppMode mode;
   final VoidCallback onAddProof;
 
   @override
   Widget build(BuildContext context) {
+    final accent = modeAccentColor(mode);
+
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -297,13 +362,10 @@ class _MissionCard extends StatelessWidget {
             width: 52,
             height: 52,
             decoration: BoxDecoration(
-              color: const Color(0xFF2457FF).withValues(alpha: 0.12),
+              color: accent.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(18),
             ),
-            child: const Icon(
-              Icons.rocket_launch_outlined,
-              color: Color(0xFF2457FF),
-            ),
+            child: Icon(mode.icon, color: accent),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -318,7 +380,7 @@ class _MissionCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 3),
                 Text(
-                  'Capture one focused proof before the day ends.',
+                  mode.missionText,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                         fontWeight: FontWeight.w700,
@@ -336,6 +398,256 @@ class _MissionCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 14),
             ),
             child: const Text('Add Proof'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SuggestedSkillsSection extends StatelessWidget {
+  const _SuggestedSkillsSection({
+    required this.mode,
+    required this.skills,
+    required this.onAddSkill,
+  });
+
+  final AppMode mode;
+  final List<Skill> skills;
+  final Future<void> Function(SuggestedSkill skill) onAddSkill;
+
+  @override
+  Widget build(BuildContext context) {
+    final suggestions = suggestedSkillsForMode(mode);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _SectionTitle(
+          title: '${mode.displayName} Skills',
+          subtitle: 'Add useful lanes for this operating mode',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 138,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: suggestions.length,
+            separatorBuilder: (context, index) => const SizedBox(width: 10),
+            itemBuilder: (context, index) {
+              final suggestion = suggestions[index];
+              final exists = skillExistsByName(skills, suggestion.name);
+
+              return _SuggestedSkillCard(
+                suggestion: suggestion,
+                exists: exists,
+                onAdd: () => onAddSkill(suggestion),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SuggestedSkillCard extends StatelessWidget {
+  const _SuggestedSkillCard({
+    required this.suggestion,
+    required this.exists,
+    required this.onAdd,
+  });
+
+  final SuggestedSkill suggestion;
+  final bool exists;
+  final VoidCallback onAdd;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final color = suggestedSkillColor(suggestion);
+
+    return Container(
+      width: 164,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: color.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(13),
+                ),
+                child: Icon(suggestedSkillIcon(suggestion), color: color),
+              ),
+              const Spacer(),
+              Icon(
+                exists ? Icons.check_circle : Icons.add_circle_outline,
+                color: exists ? color : colorScheme.onSurfaceVariant,
+                size: 20,
+              ),
+            ],
+          ),
+          const Spacer(),
+          Text(
+            suggestion.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 30,
+            child: exists
+                ? OutlinedButton(
+                    onPressed: null,
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
+                    ),
+                    child: const Text('Added'),
+                  )
+                : FilledButton(
+                    onPressed: onAdd,
+                    style: FilledButton.styleFrom(
+                      minimumSize: Size.zero,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                    ),
+                    child: const Text('Add'),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ResourcesSection extends StatelessWidget {
+  const _ResourcesSection({
+    required this.mode,
+    required this.skills,
+  });
+
+  final AppMode mode;
+  final List<Skill> skills;
+
+  @override
+  Widget build(BuildContext context) {
+    final skillNames =
+        skills.map((skill) => skill.name.trim().toLowerCase()).toSet();
+    final modeResources = resourcesForMode(mode);
+    final matchingResources = modeResources
+        .where(
+          (resource) =>
+              skillNames.contains(resource.relatedSkillName.toLowerCase()),
+        )
+        .toList();
+    final resources =
+        (matchingResources.isEmpty ? modeResources : matchingResources)
+            .take(3)
+            .toList();
+
+    if (resources.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _SectionTitle(
+          title: 'Helpful Resources',
+          subtitle: 'Static starter links for your current mode',
+        ),
+        const SizedBox(height: 12),
+        ...resources.map(
+          (resource) => Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _ResourceCard(resource: resource),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ResourceCard extends StatelessWidget {
+  const _ResourceCard({required this.resource});
+
+  final Resource resource;
+
+  Future<void> _copyLink(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: resource.url));
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Resource link copied')),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: colorScheme.surface,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(
+          color: colorScheme.onSurface.withValues(alpha: 0.07),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: colorScheme.primary.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Icon(Icons.menu_book_outlined, color: colorScheme.primary),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  resource.title,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w900,
+                      ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  resource.description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                        height: 1.3,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          IconButton.filledTonal(
+            tooltip: 'Copy resource link',
+            onPressed: () => _copyLink(context),
+            icon: const Icon(Icons.copy, size: 18),
           ),
         ],
       ),
@@ -383,20 +695,20 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _CategorySummaryCard extends StatelessWidget {
-  const _CategorySummaryCard({
-    required this.category,
+class _SkillSummaryCard extends StatelessWidget {
+  const _SkillSummaryCard({
+    required this.skill,
     required this.count,
     required this.progress,
   });
 
-  final ProofCategory category;
+  final Skill skill;
   final int count;
   final double progress;
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(category);
+    final color = skillColor(skill);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -414,7 +726,7 @@ class _CategorySummaryCard extends StatelessWidget {
               color: color.withValues(alpha: 0.11),
               borderRadius: BorderRadius.circular(16),
             ),
-            child: Icon(categoryIcon(category), color: color),
+            child: Icon(skillIcon(skill), color: color),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -422,7 +734,7 @@ class _CategorySummaryCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  category.displayName,
+                  skill.name,
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w900,
                       ),

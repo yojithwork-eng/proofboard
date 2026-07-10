@@ -2,8 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../constants/categories.dart';
+import '../constants/mode_styles.dart';
 import '../controllers/proof_controller.dart';
-import '../models/proof.dart';
+import '../controllers/settings_controller.dart';
+import '../controllers/skill_controller.dart';
+import '../models/app_mode.dart';
+import '../models/skill.dart';
 import '../widgets/empty_state.dart';
 import '../widgets/recap_sheet.dart';
 import '../widgets/stat_card.dart';
@@ -23,11 +27,14 @@ class StatsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Consumer<ProofController>(
-      builder: (context, controller, child) {
-        final counts = controller.categoryCounts;
+    return Consumer3<ProofController, SkillController, SettingsController>(
+      builder: (context, controller, skillController, settings, child) {
+        final skills = skillController.skills;
+        final counts = controller.skillCounts;
         final maxCount =
             counts.isEmpty ? 1 : counts.values.reduce((a, b) => a > b ? a : b);
+        final activeSkills =
+            skills.where((skill) => counts.containsKey(skill.id)).toList();
 
         return ListView(
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
@@ -35,7 +42,8 @@ class StatsScreen extends StatelessWidget {
             _StatsHeader(
               totalProofs: controller.totalProofs,
               totalMinutes: controller.totalMinutes,
-              bestCategory: controller.bestCategory,
+              bestSkill: controller.bestSkill(skills),
+              mode: settings.appMode,
             ),
             const SizedBox(height: 18),
             LayoutBuilder(
@@ -67,14 +75,14 @@ class StatsScreen extends StatelessWidget {
                       color: const Color(0xFF00A884),
                     ),
                     StatCard(
-                      label: 'Active categories',
-                      value: '${controller.activeCategories}',
+                      label: 'Active skills',
+                      value: '${controller.activeSkills}',
                       icon: Icons.category_outlined,
                       color: const Color(0xFF7C3AED),
                     ),
                     StatCard(
-                      label: 'Best category',
-                      value: controller.bestCategory,
+                      label: 'Best skill',
+                      value: controller.bestSkill(skills),
                       icon: Icons.emoji_events_outlined,
                       color: const Color(0xFFC2185B),
                     ),
@@ -87,24 +95,24 @@ class StatsScreen extends StatelessWidget {
               onWeeklyRecap: () => _showRecap(
                 context,
                 'Weekly Recap',
-                controller.weeklyRecap(),
+                controller.weeklyRecap(skills),
               ),
               onShareSummary: () => _showRecap(
                 context,
                 'Share Summary',
-                controller.shareRecap(),
+                controller.shareRecap(skills),
               ),
             ),
             const SizedBox(height: 26),
             Text(
-              'Category Momentum',
+              'Skill Momentum',
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.w900,
                   ),
             ),
             const SizedBox(height: 4),
             Text(
-              'See where your proof stack is growing fastest.',
+              'See which skills are growing fastest.',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: FontWeight.w700,
@@ -143,13 +151,12 @@ class StatsScreen extends StatelessWidget {
                   ],
                 ),
                 child: Column(
-                  children: proofCategories
-                      .where((category) => counts.containsKey(category))
+                  children: activeSkills
                       .map(
-                        (category) => _CategoryProgressRow(
-                          category: category,
-                          count: counts[category] ?? 0,
-                          progress: (counts[category] ?? 0) / maxCount,
+                        (skill) => _SkillProgressRow(
+                          skill: skill,
+                          count: counts[skill.id] ?? 0,
+                          progress: (counts[skill.id] ?? 0) / maxCount,
                         ),
                       )
                       .toList(),
@@ -166,22 +173,24 @@ class _StatsHeader extends StatelessWidget {
   const _StatsHeader({
     required this.totalProofs,
     required this.totalMinutes,
-    required this.bestCategory,
+    required this.bestSkill,
+    required this.mode,
   });
 
   final int totalProofs;
   final int totalMinutes;
-  final String bestCategory;
+  final String bestSkill;
+  final AppMode mode;
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(22),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [Color(0xFF07152F), Color(0xFF123B8E)],
+          colors: modeGradientColors(mode).take(2).toList(),
         ),
         borderRadius: BorderRadius.circular(30),
       ),
@@ -207,7 +216,7 @@ class _StatsHeader extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            '$totalProofs proofs, $totalMinutes minutes, strongest lane: $bestCategory.',
+            '$totalProofs proofs, $totalMinutes minutes, strongest skill: $bestSkill.',
             style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   color: Colors.white.withValues(alpha: 0.76),
                   fontWeight: FontWeight.w700,
@@ -260,20 +269,20 @@ class _RecapActions extends StatelessWidget {
   }
 }
 
-class _CategoryProgressRow extends StatelessWidget {
-  const _CategoryProgressRow({
-    required this.category,
+class _SkillProgressRow extends StatelessWidget {
+  const _SkillProgressRow({
+    required this.skill,
     required this.count,
     required this.progress,
   });
 
-  final ProofCategory category;
+  final Skill skill;
   final int count;
   final double progress;
 
   @override
   Widget build(BuildContext context) {
-    final color = categoryColor(category);
+    final color = skillColor(skill);
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 11),
@@ -289,7 +298,7 @@ class _CategoryProgressRow extends StatelessWidget {
                   color: color.withValues(alpha: 0.11),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(categoryIcon(category), color: color, size: 20),
+                child: Icon(skillIcon(skill), color: color, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -297,7 +306,7 @@ class _CategoryProgressRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      category.displayName,
+                      skill.name,
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w900,
                           ),
